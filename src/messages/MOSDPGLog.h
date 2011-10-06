@@ -20,6 +20,10 @@
 
 class MOSDPGLog : public Message {
   epoch_t epoch;
+  /// effective_epoch is the epoch of the query being responded
+  /// to. This allows the recipient to disregard responses to old
+  /// queries.
+  epoch_t effective_epoch;
 
 public:
   PG::Info info;
@@ -28,25 +32,32 @@ public:
 
   epoch_t get_epoch() { return epoch; }
   pg_t get_pgid() { return info.pgid; }
+  epoch_t get_effective_epoch() { return effective_epoch; }
 
   MOSDPGLog() {}
   MOSDPGLog(version_t mv, PG::Info& i) :
     Message(MSG_OSD_PG_LOG),
-    epoch(mv), info(i) { }
+    epoch(mv), effective_epoch(mv), info(i)  { }
+  MOSDPGLog(version_t mv, PG::Info& i, epoch_t effective_epoch) :
+    Message(MSG_OSD_PG_LOG),
+    epoch(mv), effective_epoch(effective_epoch), info(i)  { }
 private:
   ~MOSDPGLog() {}
 
 public:
   const char *get_type_name() { return "PGlog"; }
   void print(ostream& out) {
-    out << "pg_log(" << info.pgid << " e" << epoch << ")";
+    out << "pg_log(" << info.pgid << " e" << epoch
+	<< " eff. epoch" << effective_epoch << ")";
   }
 
   void encode_payload(CephContext *cct) {
+    header.version = 2;
     ::encode(epoch, payload);
     ::encode(info, payload);
     ::encode(log, payload);
     ::encode(missing, payload);
+    ::encode(effective_epoch, payload);
   }
   void decode_payload(CephContext *cct) {
     bufferlist::iterator p = payload.begin();
@@ -54,6 +65,9 @@ public:
     ::decode(info, p);
     ::decode(log, p);
     ::decode(missing, p);
+    if (header.version > 1) {
+      ::decode(effective_epoch, p);
+    }
   }
 };
 
